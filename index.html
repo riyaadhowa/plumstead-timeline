@@ -346,7 +346,7 @@
           display: block;
           width: 100%;
           min-width: 0;
-          padding: 1.4rem 0.85rem 2.6rem;
+          padding: 1.4rem 0.85rem 2.6rem 0;
         }
 
         .tl-line {
@@ -366,7 +366,8 @@
           position: relative;
           display: block;
           width: auto;
-          margin: 0 0 0.95rem 5.55rem;
+          margin: 0 0 0.95rem 0;
+          padding-left: 5.55rem;
         }
 
         .stem {
@@ -376,17 +377,19 @@
         .node {
           position: absolute;
           top: 1.1rem;
-          left: -1.62rem;
+          left: 4.1rem;
+          z-index: 4;
         }
 
         .line-year {
           top: 1rem;
-          left: -0.9rem;
-          width: max-content;
-          transform: translateX(-100%);
+          left: 0;
+          width: 4rem;
+          transform: none;
           border-top: 0;
-          padding-top: 0;
-          text-align: left;
+          padding-top: 1;
+          text-align: center;
+          text-wrap: auto;
         }
 
         .card,
