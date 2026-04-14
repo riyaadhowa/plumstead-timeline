@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Plumstead</title>
+    <style>
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0b0c10;
+        --line: #2a2d3a;
+        --line-glow: rgba(180, 140, 90, 0.3);
+        --node: #c08050;
+        --node-glow: rgba(192, 128, 80, 0.6);
+        --card-bg: rgba(20, 21, 30, 0.88);
+        --card-bdr: rgba(255, 255, 255, 0.07);
+        --ink: #e8ddd0;
+        --ink-soft: #8a7f72;
+        --gold: #c08050;
+        --shadow: rgba(0, 0, 0, 0.65);
+      }
+
+      html, body {
+        height: 100%;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: Georgia, serif;
+        background: var(--bg);
+        color: var(--ink);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── Header ── */
+      header {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.2rem 2rem 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        background: var(--bg);
+        z-index: 10;
+      }
+      .header-left h1 {
+        font-size: 1.4rem;
+        letter-spacing: 0.08em;
+        font-weight: normal;
+        color: var(--ink);
+      }
+      .header-left p {
+        font-size: 0.75rem;
+        color: var(--ink-soft);
+        font-style: italic;
+        margin-top: 0.1rem;
+      }
+      .zoom-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+      }
+      .zoom-btn {
+        width: 30px;
+        height: 45px;
+        border-radius: 25px;
+        color: var(--ink-soft);
+        font-size: 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s, color 0.15s;
+      }
+      .zoom-btn:hover {
+        background: rgba(255, 255, 255, 0.09);
+        color: var(--ink);
+      }
+      .hint-bar {
+        flex-shrink: 0;
+        text-align: center;
+        padding: 0.35rem;
+        font-size: 0.68rem;
+        font-family: sans-serif;
+        color: rgba(138, 127, 114, 0.4);
+        letter-spacing: 0.08em;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      }
+
+      /* ── Viewport & canvas ── */
+      .viewport {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+      }
+      .canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+        will-change: transform;
+      }
+      .canvas.dragging {
+        cursor: grabbing;
+      }
+
+      /* ── Timeline ── */
+      .timeline {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        padding: 210px 140px;
+        min-width: max-content;
+      }
+      .tl-line {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--line) 5%, var(--line) 95%, transparent);
+        transform: translateY(-50%);
+        box-shadow: 0 0 16px var(--line-glow);
+      }
+
+      /* ── Event ── */
+      .event {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 185px;
+        flex-shrink: 0;
+        margin: 0 0.75rem;
+        cursor: pointer;
+        z-index: 1;
+      }
+      .event.selected {
+        z-index: 10;
+      }
+      .event:nth-child(odd) {
+        flex-direction: column-reverse;
+      }
+      .event:nth-child(even) {
+        flex-direction: column;
+      }
+
+      /* ── Node date label ── */
+      .line-year {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, 7px);
+        border-top: 1px solid rgba(192, 140, 80, 0.28);
+        padding-top: 6px;
+        font-size: 0.6rem;
+        font-family: "Courier New", monospace;
+        letter-spacing: 0.06em;
+        color: rgba(192, 140, 80, 0.5);
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 3;
+        text-align: center;
+        transition: color 0.2s ease, border-top-color 0.2s ease;
+      }
+      .event:hover .line-year,
+      .event.selected .line-year {
+        color: rgba(192, 140, 80, 0.95);
+        border-top-color: rgba(192, 140, 80, 0.6);
+      }
+
+      /* ── Stem ── */
+      .stem {
+        width: 1px;
+        height: 50px;
+        flex-shrink: 0;
+        background: linear-gradient(180deg, transparent, var(--line) 50%, transparent);
+      }
+
+      /* ── Node ── */
+      .node {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: var(--node);
+        border: 2px solid var(--bg);
+        box-shadow:
+          0 0 0 1px var(--node),
+          0 0 12px var(--node-glow),
+          0 0 24px var(--node-glow);
+        flex-shrink: 0;
+        z-index: 2;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+      .event:hover .node {
+        transform: scale(1.65);
+        box-shadow:
+          0 0 0 1px var(--node),
+          0 0 20px var(--node-glow),
+          0 0 45px var(--node-glow);
+      }
+      .event.selected .node {
+        transform: scale(1.85);
+        box-shadow:
+          0 0 0 2px var(--node),
+          0 0 24px var(--node-glow),
+          0 0 56px var(--node-glow);
+      }
+
+      /* ── Card ── */
+      .card {
+        width: 100%;
+        background: var(--card-bg);
+        border: 1px solid var(--card-bdr);
+        border-radius: 10px;
+        padding: 0.85rem 1rem;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 4px 22px var(--shadow);
+        will-change: width, transform;
+        transition:
+          width 0.3s ease-out,
+          box-shadow 0.2s ease,
+          border-color 0.2s ease,
+          transform 0.2s ease;
+      }
+      .event:hover .card {
+        box-shadow:
+          0 8px 38px var(--shadow),
+          0 0 0 1px rgba(192, 128, 80, 0.18);
+        transform: translateY(-4px);
+      }
+      .event:nth-child(odd):hover .card {
+        transform: translateY(4px);
+      }
+      .event.selected .card {
+        width: 270px;
+        box-shadow:
+          0 12px 48px var(--shadow),
+          0 0 0 1px rgba(192, 128, 80, 0.38);
+        transform: translateY(-6px);
+        border-color: rgba(192, 128, 80, 0.22);
+      }
+      .event:nth-child(odd).selected .card {
+        transform: translateY(6px);
+      }
+
+      /* ── Tags ── */
+      .tag {
+        display: inline-block;
+        font-size: 0.58rem;
+        font-family: sans-serif;
+        padding: 0.1rem 0.4rem;
+        border-radius: 20px;
+        margin-bottom: 0.28rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border: 1px solid transparent;
+      }
+      .tag.founding  { color: #d4a060; border-color: rgba(212, 160, 96,  0.28); background: rgba(212, 160, 96,  0.07); }
+      .tag.infra     { color: #70b070; border-color: rgba(112, 176, 112, 0.28); background: rgba(112, 176, 112, 0.07); }
+      .tag.social    { color: #7090d0; border-color: rgba(112, 144, 208, 0.28); background: rgba(112, 144, 208, 0.07); }
+      .tag.heritage  { color: #c08878; border-color: rgba(192, 136, 120, 0.28); background: rgba(192, 136, 120, 0.07); }
+      .tag.curiosity { color: #a080c8; border-color: rgba(160, 128, 200, 0.28); background: rgba(160, 128, 200, 0.07); }
+
+      .card h3 {
+        font-size: 0.83rem;
+        line-height: 1.35;
+        color: var(--ink);
+      }
+
+      /* ── Card detail — height animated via JS ── */
+      .card-detail {
+        height: 0;
+        overflow: hidden;
+        opacity: 0;
+        will-change: height, opacity;
+      }
+      .card-detail p:first-child {
+        padding-top: 0.72rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+      }
+      .card-detail p {
+        font-size: 0.82rem;
+        line-height: 1.72;
+        color: rgba(232, 221, 208, 0.8);
+      }
+      .card-detail p + p {
+        margin-top: 0.55rem;
+      }
+      .card-detail .footnote {
+        margin-top: 0.8rem;
+        font-size: 0.68rem;
+        font-style: italic;
+        color: var(--ink-soft);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-left">
+        <h1>Plumstead</h1>
+        <p>Cape Town, South Africa</p>
+      </div>
+      <div class="zoom-controls">
+        <div
+          class="zoom-btn"
+          id="zoomReset"
+          title="Reset"
+          style="font-size: 0.68rem; font-family: sans-serif; width: auto; padding: 0 0.55rem;"
+        >
+          Reset
+        </div>
+      </div>
+    </header>
+
+    <div class="viewport" id="viewport">
+      <div class="canvas" id="canvas">
+        <div class="timeline" id="timeline">
+          <div class="tl-line"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint-bar">
+      drag or two-finger scroll to pan &nbsp;&bull;&nbsp; hover a card to expand
+      &nbsp;&bull;&nbsp; ctrl+scroll or pinch to zoom
+    </div>
+
+    <script>
+      var events = [
+        {
+          year: "Pre-1762",
+          title: "VOC Military Camp",
+          tag: "founding",
+          tagLabel: "Origins",
+          body: [
+            "Before European settlement, the land that would become Plumstead was the site of a Dutch East India Company (VOC) Military Camp, approximately 13km south of Cape Town.",
+            "The VOC controlled the Cape as a strategic refreshment station for ships travelling between Europe and Asia. Military outposts like this one secured the routes and resources of the colonial hinterland.",
+          ],
+          footnote: "Source: SA History Online, plumsteadproperty.co.za",
+        },
+        {
+          year: "1762",
+          title: "Rust en Werk \u2014 Dutch Settlement Begins",
+          tag: "founding",
+          tagLabel: "Founding",
+          body: [
+            "A large portion of land beyond Wynberg and the Constantia Valley was granted to Dutch free burghers <strong>Johan Barrens</strong> and <strong>Hendrick Jergens</strong>.",
+            "They named the farm <em>Rust en Werk</em> \u2014 Dutch for \u201cRest and Work.\u201d It was a working farm and a place to recover from the rigours of Cape colonial life.",
+          ],
+          footnote: "Source: Wikipedia, plumsteadproperty.co.za",
+        },
+        {
+          year: "1782",
+          title: "Land Changes Hands",
+          tag: "founding",
+          tagLabel: "Founding",
+          body: [
+            "The land passed to <strong>Hendrick Bouman Brigeraad</strong> \u2014 reflecting how frequently land changed hands in the colonial Cape as the VOC\u2019s grip weakened.",
+            "Nearby, a smallholding on the Diep River was granted to <strong>Johan Georg Lochner</strong> of Mannheim, Germany \u2014 whose property would eventually become Timour Hall Villa.",
+          ],
+          footnote: "Source: Wikipedia, Timour Hall Villa (Wikipedia)",
+        },
+        {
+          year: "1807",
+          title: "Henry Batt Names It Plumstead",
+          tag: "founding",
+          tagLabel: "Naming",
+          body: [
+            "<strong>Henry Batt</strong>, a former ship\u2019s steward turned wine merchant, arrived from the United Kingdom and purchased <em>Rust en Werk</em>. He renamed it <strong>Plumstead</strong> after the district in southeast London.",
+            "Batt farmed the land for 26 years and amassed a substantial fortune at the Cape. The original Cape cottage \u2014 with a stoep and plaster benches \u2014 still stands on <strong>Castletown Road</strong>.",
+          ],
+          footnote: "Source: Wikipedia, plumsteadproperty.co.za",
+        },
+        {
+          year: "1823",
+          title: "An Established Village",
+          tag: "social",
+          tagLabel: "Growth",
+          body: [
+            "By 1823, Plumstead was already described in records as an established, growing village \u2014 testimony to how quickly the settlement expanded in the decades since British occupation of the Cape.",
+          ],
+          footnote: "Source: SA History Online",
+        },
+        {
+          year: "1833",
+          title: "Subdivision, Abolition &amp; New Communities",
+          tag: "social",
+          tagLabel: "Social",
+          body: [
+            "<strong>Henry Batt died</strong> in 1833. His farm was subdivided and sold to Messrs. Higgs, Laubscher, and Southey. Richard Southey was the son of 1820 Settlers leader George Southey of Culmstock, Devonshire.",
+            "The <strong>abolition of slavery</strong> the same year brought a strong Muslim community to the area \u2014 a legacy still visible in the culture of the Southern Peninsula today.",
+          ],
+          footnote: "Source: Wikipedia, plumsteadproperty.co.za",
+        },
+        {
+          year: "1840s",
+          title: "Rathfelder\u2019s Inn \u2014 Cape Hunt HQ",
+          tag: "heritage",
+          tagLabel: "Heritage",
+          body: [
+            "<strong>Rathfelder\u2019s Inn</strong> was a famous halfway house renowned for warm hospitality and a popular stop for travellers heading south from Cape Town.",
+            "In the 1840s it became the official headquarters of the <strong>Cape Hunt</strong> \u2014 a popular social and sporting club. The building survives today as the <strong>Eaton Convalescent Home</strong>.",
+          ],
+          footnote: "Source: plumsteadproperty.co.za",
+        },
+        {
+          year: "1878",
+          title: "Timour Hall Villa Registered",
+          tag: "heritage",
+          tagLabel: "Heritage",
+          body: [
+            "The property originating from Johan Georg Lochner\u2019s 1784 land grant was officially registered as <strong>Timour Hall Villa</strong>, ceded to Aletta Jacoba Smith \u2014 granddaughter of William Duckett.",
+            "The villa is a Victorian and Cape Dutch residence, now a <strong>Grade 2 heritage-listed</strong> building in Plumstead.",
+          ],
+          footnote: "Source: Timour Hall Villa (Wikipedia)",
+        },
+        {
+          year: "15 Dec 1882",
+          title: "The Railway Arrives \u2014 The Suburb is Born",
+          tag: "infra",
+          tagLabel: "Infrastructure",
+          body: [
+            "On <strong>15 December 1882</strong>, the Cape Town\u2013Wynberg suburban railway was extended to Muizenberg. Plumstead Station opened \u2014 built initially in wood and iron.",
+            "This single event transformed Plumstead from scattered farmland into a residential suburb. The station was built to handle fruit traffic from the Constantia Valley.",
+            "The railway line still physically divides the suburb today, forming the boundary between Ward 62 (west) and Ward 73 (east).",
+          ],
+          footnote: "Source: plumsteadproperty.co.za, SA History Online",
+        },
+        {
+          year: "1885",
+          title: "Royal Cape Golf Club &amp; Percy Fitzpatrick",
+          tag: "heritage",
+          tagLabel: "Heritage",
+          body: [
+            "The <strong>Royal Cape Golf Club</strong> was founded in 1885 \u2014 the oldest golf club in South Africa.",
+            "<strong>Sir Percy Fitzpatrick</strong>, author of <em>Jock of the Bushveld</em>, lived at Timour Hall Villa. The first written mention of \u201cTimour Hall\u201d appears in an 1885 advertisement by Judge Fitzpatrick.",
+          ],
+          footnote: "Source: plumsteadproperty.co.za, Timour Hall Villa (Wikipedia)",
+        },
+        {
+          year: "1896",
+          title: "New Railway Station Built",
+          tag: "infra",
+          tagLabel: "Infrastructure",
+          body: [
+            "The original wood-and-iron Plumstead Station, opened in 1882, was replaced with a new permanent structure \u2014 reflecting the suburb\u2019s growing importance as a residential hub.",
+          ],
+          footnote: "Source: plumsteadproperty.co.za",
+        },
+        {
+          year: "1904\u201305",
+          title: "First Businesses Established",
+          tag: "social",
+          tagLabel: "Commerce",
+          body: [
+            "<strong>Osman\u2019s Supply Store</strong> opened in 1904, followed by <strong>Yudelman\u2019s Store</strong> in 1905 \u2014 among the oldest commercial enterprises in the suburb.",
+          ],
+          footnote: "Source: plumsteadproperty.co.za",
+        },
+        {
+          year: "4 Nov 1906",
+          title: "The Meteorite",
+          tag: "curiosity",
+          tagLabel: "Curiosity",
+          body: [
+            "On <strong>4 November 1906</strong>, a <strong>910-gram meteorite</strong> crashed through a metal roof on a Diep River farm called <em>Hermitage</em>.",
+            "The specimen is a rare <strong>L6 Chondrite</strong>. It is preserved at the <strong>South African Museum</strong> in Cape Town\u2019s Company\u2019s Gardens.",
+          ],
+          footnote: "Source: plumsteadproperty.co.za",
+        },
+        {
+          year: "1929",
+          title: "Railway Electrified",
+          tag: "infra",
+          tagLabel: "Infrastructure",
+          body: [
+            "The Southern Suburbs railway line was electrified in 1929, modernising commuter travel. Plumstead was firmly established as a residential suburb defined by its rail connection to Cape Town.",
+          ],
+          footnote: "Source: plumsteadproperty.co.za",
+        },
+        {
+          year: "1940s\u20131960s",
+          title: "The Housing Boom",
+          tag: "social",
+          tagLabel: "Development",
+          body: [
+            "The majority of Plumstead\u2019s current housing stock was built during this period \u2014 detached homes, many with swimming pools, some with historic status.",
+            "Many streets bear names from <strong>Devon, England</strong>, planted by a homesick early resident who also scattered pine seeds throughout the area.",
+            "Historically described as the <em>\u201cCinderella of Wynberg and Diep River\u201d</em> \u2014 populated by pensioners and younger residents renovating older homes.",
+          ],
+          footnote: "Source: SA History Online, plumsteadproperty.co.za",
+        },
+      ];
+
+      /* ── Card animation ── */
+      function openCard(col) {
+        var detail = col.querySelector(".card-detail");
+        detail.style.transition = "height 0.38s ease-out, opacity 0.28s ease 0.14s";
+        detail.style.height = detail.scrollHeight + "px";
+        detail.style.opacity = "1";
+      }
+
+      function closeCard(col) {
+        var detail = col.querySelector(".card-detail");
+        detail.style.transition = "height 0.28s ease-out, opacity 0.14s ease";
+        detail.style.height = "0";
+        detail.style.opacity = "0";
+      }
+
+      function selectCol(col) {
+        cols.forEach(function (c) {
+          if (c === col) return;
+          c.classList.remove("selected");
+          var d = c.querySelector(".card-detail");
+          d.style.transition = "none";
+          d.style.height = "0";
+          d.style.opacity = "0";
+        });
+        col.classList.add("selected");
+        openCard(col);
+      }
+
+      /* ── Build DOM ── */
+      var tl = document.getElementById("timeline");
+      var cols = [];
+
+      events.forEach(function (ev) {
+        var col = document.createElement("div");
+        col.className = "event";
+        col.innerHTML =
+          '<div class="card">' +
+          '<span class="tag ' + ev.tag + '">' + ev.tagLabel + "</span>" +
+          "<h3>" + ev.title + "</h3>" +
+          '<div class="card-detail">' +
+          ev.body.map(function (p) { return "<p>" + p + "</p>"; }).join("") +
+          '<div class="footnote">' + ev.footnote + "</div>" +
+          "</div>" +
+          "</div>" +
+          '<div class="stem"></div>' +
+          '<div class="node"></div>' +
+          '<div class="stem"></div>' +
+          '<div class="line-year">' + ev.year + "</div>";
+
+        col.addEventListener("mouseenter", function () {
+          if (dragging) return;
+          selectCol(col);
+        });
+        col.addEventListener("mouseleave", function () {
+          col.classList.remove("selected");
+          closeCard(col);
+        });
+        col.addEventListener("click", function (e) {
+          e.stopPropagation();
+        });
+
+        tl.appendChild(col);
+        cols.push(col);
+      });
+
+      /* ── Pan / zoom ── */
+      var vpEl = document.getElementById("viewport");
+      var canvas = document.getElementById("canvas");
+      var panX = 0, panY = 0, scale = 1;
+      var MIN_S = 0.35, MAX_S = 2.2;
+      var dragging = false, startX = 0, startY = 0;
+      var velX = 0, velY = 0, lastT = 0, rafId = null;
+
+      canvas.style.transformOrigin = "center center";
+
+      function applyT() {
+        canvas.style.transform = "translate(" + panX + "px," + panY + "px) scale(" + scale + ")";
+      }
+
+      function momentum() {
+        velX *= 0.91;
+        velY *= 0.91;
+        if (Math.abs(velX) < 0.25 && Math.abs(velY) < 0.25) return;
+        panX += velX;
+        panY += velY;
+        applyT();
+        rafId = requestAnimationFrame(momentum);
+      }
+
+      canvas.addEventListener("mousedown", function (e) {
+        if (e.target.closest(".event")) return;
+        dragging = true;
+        canvas.classList.add("dragging");
+        startX = e.clientX;
+        startY = e.clientY;
+        velX = 0;
+        velY = 0;
+        lastT = Date.now();
+        cancelAnimationFrame(rafId);
+      });
+
+      window.addEventListener("mousemove", function (e) {
+        if (!dragging) return;
+        var now = Date.now();
+        var dx = e.clientX - startX;
+        var dy = e.clientY - startY;
+        var dt = Math.max(now - lastT, 1);
+        velX = (dx / dt) * 14;
+        velY = (dy / dt) * 14;
+        panX += dx;
+        panY += dy;
+        startX = e.clientX;
+        startY = e.clientY;
+        lastT = now;
+        applyT();
+      });
+
+      window.addEventListener("mouseup", function () {
+        if (!dragging) return;
+        dragging = false;
+        canvas.classList.remove("dragging");
+        rafId = requestAnimationFrame(momentum);
+      });
+
+      vpEl.addEventListener(
+        "wheel",
+        function (e) {
+          e.preventDefault();
+          cancelAnimationFrame(rafId);
+          if (e.ctrlKey || e.metaKey) {
+            setScale(scale * (e.deltaY > 0 ? 0.91 : 1.1), e.clientX, e.clientY);
+          } else {
+            panX -= e.deltaX * 1.3;
+            panY -= e.deltaY * 1.3;
+            applyT();
+          }
+        },
+        { passive: false }
+      );
+
+      function setScale(s, cx, cy) {
+        s = Math.min(MAX_S, Math.max(MIN_S, s));
+        var vw = vpEl.clientWidth / 2;
+        var vh = vpEl.clientHeight / 2;
+        panX -= ((cx - vw - panX) / scale) * (s - scale);
+        panY -= ((cy - vh - panY) / scale) * (s - scale);
+        scale = s;
+        applyT();
+      }
+
+      document.getElementById("zoomReset").addEventListener("click", function () {
+        scale = 1;
+        panX = 0;
+        panY = 0;
+        applyT();
+      });
+
+      vpEl.addEventListener("click", function () {
+        cols.forEach(function (c) {
+          c.classList.remove("selected");
+          closeCard(c);
+        });
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") {
+          cols.forEach(function (c) {
+            c.classList.remove("selected");
+            closeCard(c);
+          });
+        }
+      });
+
+      applyT();
+    </script>
+  </body>
+</html>
